@@ -3,6 +3,9 @@ import re
 import pandas as pd
 from sklearn.model_selection import train_test_split
 
+
+speech_acts = ['ASSERTIVE', 'COMOTH', 'DIRECTIVE','EXPRESSIVE', 'UNSURE']
+
 #### Write method to create multiclass hs dataset
 def create_dataset(df, tweet_names, write_file=False):
     """
@@ -52,6 +55,65 @@ def transform_to_binary(train_df, test_df):
     new_test_df = pd.DataFrame({"texts": test_df["texts"].values.tolist(),"labels": test_labels})
     return new_train_df, new_test_df
 
+def erase_labels(train_df, test_df):
+    """
+    Erases the speech acts labels from the train and test split
+    """
+    train_texts, test_texts = [],[]
+    for text in train_df["texts"]:
+        new_text = []
+        splitted = text.split("[SEP]")
+        for sentence in splitted:
+            if sentence.replace("[SEP]","") in speech_acts:
+                break
+            else:
+                new_text.append(sentence)
+        train_texts.append("[SEP]".join(new_text))
+    new_train_df = pd.DataFrame({"texts": train_texts,"labels": train_df["labels"].values.tolist()})
+    for text in test_df["texts"]:
+        new_text = []
+        splitted = text.split("[SEP]")
+        for sentence in splitted:
+            print(sentence)
+            if sentence.replace("[SEP]", "") in speech_acts:
+                break
+            else:
+                new_text.append(sentence)
+        test_texts.append("[SEP]".join(new_text))
+    new_test_df = pd.DataFrame({"texts": test_texts,"labels": test_df["labels"].values.tolist()})
+    return new_train_df, new_test_df
+
+def transform_features(train_df, test_df):
+    """
+    Transforms how the speech act features are included in the train and test split
+    """
+    train_texts, test_texts = [],[]
+    for text in train_df["texts"]:
+        sa_occurences = set()
+        new_text = []
+        splitted = text.split("[SEP]")
+        for sentence in splitted:
+            if sentence.replace("[SEP]","") in speech_acts:
+                sa_occurences.add(sentence.replace("[SEP]",""))
+            else:
+                new_text.append(sentence)
+        new_text.extend(list(sorted(sa_occurences)))
+        train_texts.append("[SEP]".join(new_text))
+    new_train_df = pd.DataFrame({"texts": train_texts,"labels": train_df["labels"].values.tolist()})
+    for text in test_df["texts"]:
+        sa_occurences = set()
+        new_text = []
+        splitted = text.split("[SEP]")
+        for sentence in splitted:
+            if sentence.replace("[SEP]","") in speech_acts:
+                sa_occurences.add(sentence.replace("[SEP]",""))
+            else:
+                new_text.append(sentence)
+        new_text.extend(list(sorted(sa_occurences)))
+        test_texts.append("[SEP]".join(new_text))
+    new_test_df = pd.DataFrame({"texts": test_texts,"labels": test_df["labels"].values.tolist()})
+    return new_train_df, new_test_df
+
 if __name__ == "__main__":
 
     #### Set paths
@@ -95,8 +157,7 @@ if __name__ == "__main__":
     print(sa_labels_to_ids)
     print(hs_labels_to_ids)
 
-
-    #### Concatenate sa labels to text and separating them using [SEP]
+    #### Concatenate speech act labels to text and separating them using [SEP]
     texts_with_features = []
     labels = []
     for text, sa_label, hs_label in zip(final_df['texts'].values.tolist(), final_df['labels'].values.tolist(), final_df['hs_labels'].values.tolist()):
@@ -104,17 +165,41 @@ if __name__ == "__main__":
         joined = "[SEP]".join(text) # still maintain sentence boundaries via [SEP]
         texts_with_features.append(joined)
 
-    #### Create new df and write to csv 
+    #### Create dataframe with speech act features and write to csv 
     labels = [hs_labels_to_ids[i] for i in final_df['hs_labels'].values.tolist()]
     transformed_df = pd.DataFrame({"texts": texts_with_features, "labels" : labels})
     transformed_df.to_csv("data/transformed_dataset.csv", index=False)
 
     #### Split data into training and test set (80/20)
-    train_df, test_df = train_test_split(transformed_df, test_size=0.2, random_state=200, shuffle=True, stratify=transformed_df["labels"])
-    train_df.to_csv('data/train_dataset.csv', index=False) 
-    test_df.to_csv('data/test_dataset.csv', index=False)
+    train_df, test_df = train_test_split(transformed_df, test_size=0.2, random_state=200, shuffle=True, stratify=final_df["labels"])
+    train_df.to_csv('data/multi_train_v1_dataset.csv', index=False) 
+    test_df.to_csv('data/multi_test_v1_dataset.csv', index=False)
 
     #### Transform data to binary hs labels and write to file
     binary_train, binary_test = transform_to_binary(train_df, test_df)
-    binary_train.to_csv('data/binary_train_dataset.csv', index=False) 
-    binary_test.to_csv('data/binary_test_dataset.csv', index=False)
+    binary_train.to_csv('data/binary_train_v1_dataset.csv', index=False) 
+    binary_test.to_csv('data/binary_test_v1_dataset.csv', index=False)
+
+    #### BINARY: Erase speech act features ('nofeat')
+    train, test = pd.read_csv("data/binary_train_v1_dataset.csv"), pd.read_csv("data/binary_test_v1_dataset.csv")
+    binary_nofeat_train, binary_nofeat_test = erase_labels(train, test)
+    binary_nofeat_train.to_csv('data/binary_train_nofeat_dataset.csv', index=False) 
+    binary_nofeat_test.to_csv('data/binary_test_nofeat_dataset.csv', index=False)
+
+    #### BINARY: Convert to speech act feature version 'v2'
+    train, test = pd.read_csv("data/binary_train_v1_dataset.csv"), pd.read_csv("data/binary_test_v1_dataset.csv")
+    binary_v2_train, binary_v2_test = transform_features(train, test)
+    binary_v2_train.to_csv('data/binary_train_v2_dataset.csv', index=False) 
+    binary_v2_test.to_csv('data/binary_test_v2_dataset.csv', index=False)
+
+    ##### MULTI: Erase speech act features ('nofeat')
+    train, test = pd.read_csv("data/multi_train_v1_dataset.csv"), pd.read_csv("data/multi_test_v1_dataset.csv")
+    multi_train_nofeat, multi_test_nofeat = erase_labels(train, test)
+    multi_train_nofeat.to_csv('data/multi_train_nofeat_dataset.csv', index=False) 
+    multi_test_nofeat.to_csv('data/multi_test_nofeat_dataset.csv', index=False)
+
+    #### MULTI: Convert to speech act feature version 'v2'
+    train, test = pd.read_csv("data/multi_train_v1_dataset.csv"), pd.read_csv("data/multi_test_v1_dataset.csv")
+    multi_train_v2, multi_test_v2 = transform_features(train, test)
+    multi_train_v2.to_csv('data/multi_train_v2_dataset.csv', index=False) 
+    multi_test_v2.to_csv('data/multi_test_v2_dataset.csv', index=False)
