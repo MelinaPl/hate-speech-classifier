@@ -10,7 +10,13 @@ import wandb
 from datasets import Dataset
 import platform
 
-print(platform.platform()) # check whether x86 or arm64 is used, should be the latter
+#### Ensure reproducibility
+os.environ['PYTHONHASHSEED']= "123"
+set_seed(123)
+
+#### check whether x86 or arm64 is used, should be the latter
+print(platform.platform()) 
+
 """
 If its x86, type the following into the console:
 
@@ -21,37 +27,35 @@ $ conda install python=3.9
 $ pip install -r requirements.txt
 
 """
-# start a new wandb run to track this script
+
+#### Start a new wandb run to track this script
 wandb.init(
     project="hate-speech-classifier"
 )
 
-# this ensures that the current MacOS version is at least 12.3+
+#### This ensures that the current MacOS version is at least 12.3+
 print(torch.backends.mps.is_available())
-# this ensures that the current PyTorch installation was built with MPS activated.
+#### This ensures that the current PyTorch installation was built with MPS activated.
 print(torch.backends.mps.is_built())
 
-# set seed to produce reproducible results
-set_seed(123)
-
-# set device (only for Mac!)
+#### Set device (only for Mac!)
 device = torch.device("mps")
 
-# set paths
+#### Set paths
 WORKING_DIR = os.path.dirname(__file__)
 DATA_DIR = "data"
 MODEL_DIR = os.path.join(WORKING_DIR, "models")
 full_path = os.path.join(WORKING_DIR, DATA_DIR)
 
 #### Load datasets
-train = pd.read_csv(os.path.join(full_path,"multi_train_v1_dataset.csv"))
-test = pd.read_csv(os.path.join(full_path,"multi_test_v1_dataset.csv"))
+train = pd.read_csv(os.path.join(full_path,"binary_train_v2_dataset.csv"))
+test = pd.read_csv(os.path.join(full_path,"binary_test_v2_dataset.csv"))
 
 #### Label mappings
-# labels_to_hs_ids = {'offensive': 0, 'other': 1}
-# ids_to_hs_labels = {0: 'offensive', 1: 'other'}
-labels_to_hs_ids = {'abuse': 0, 'explicit': 1, 'implicit': 2, 'insult': 3, 'other': 4, 'profanity': 5}
-ids_to_hs_labels = {0: 'abuse', 1: 'explicit', 2: 'implicit', 3: 'insult', 4: 'other', 5: 'profanity'}
+labels_to_hs_ids = {'offensive': 0, 'other': 1}
+ids_to_hs_labels = {0: 'offensive', 1: 'other'}
+# labels_to_hs_ids = {'abuse': 0, 'explicit': 1, 'implicit': 2, 'insult': 3, 'other': 4, 'profanity': 5}
+# ids_to_hs_labels = {0: 'abuse', 1: 'explicit', 2: 'implicit', 3: 'insult', 4: 'other', 5: 'profanity'}
 
 
 #### Load tokenizer and model
@@ -94,18 +98,18 @@ os.environ["WANDB_LOG_MODEL"]="true"
 os.environ["WANDB_WATCH"]="false"
 
 def model_init():
-    return AutoModelForSequenceClassification.from_pretrained("dbmdz/bert-base-german-uncased", # Use the German 12-layer BERT model, with an uncased vocab.
-    num_labels = 6, # The number of output labels
+    return AutoModelForSequenceClassification.from_pretrained("dbmdz/bert-base-german-uncased",
+    num_labels = 2, # The number of output labels
     id2label=ids_to_hs_labels,
     label2id=labels_to_hs_ids).to(device)
 
 training_args = TrainingArguments(
-    output_dir=os.path.join(MODEL_DIR, "model_umv1_torch"),
+    output_dir=os.path.join(MODEL_DIR, "model_ubv2"),
     learning_rate=2e-5,
-    optim="adamw_hf", # pytorch bias correction?
+    optim="adamw_torch",
     auto_find_batch_size=True,
     save_total_limit=1,
-    num_train_epochs=2,
+    num_train_epochs=10,
     warmup_ratio=0.1,
     weight_decay=0.01,
     evaluation_strategy="epoch",
@@ -114,6 +118,7 @@ training_args = TrainingArguments(
     metric_for_best_model="weighted_f1",
     data_seed=123,
     seed=123,
+    full_determinism=True,
     use_mps_device=True
 )
 
@@ -132,7 +137,8 @@ trainer = Trainer(
 
 trainer.train()
 print(trainer.evaluate())
-# After training, access the path of the best checkpoint like this
+
+#### After training, access the path of the best checkpoint like this
 best_ckpt_path = trainer.state.best_model_checkpoint
 print(best_ckpt_path)
 wandb.finish()
